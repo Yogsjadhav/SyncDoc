@@ -1,64 +1,76 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import apiClient from '../lib/apiClient';
-import { useAuthStore } from '../store/authStore';
+import { useAuth, useDocuments } from '../hooks';
 import DocumentCard from '../components/dashboard/DocumentCard';
 import ShareModal from '../components/dashboard/ShareModal';
 import ConfirmDeleteModal from '../components/dashboard/ConfirmDeleteModal';
 import Avatar from '../components/ui/Avatar';
 import Button from '../components/ui/Button';
 
+/**
+ * DashboardPage Component
+ * 
+ * UI Layer: Main dashboard showing document list
+ * Uses: useAuth, useDocuments hooks (Hooks Layer)
+ */
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
+  const { user, logout } = useAuth();
+  const { 
+    documents, 
+    loading, 
+    fetchDocuments, 
+    createDocument, 
+    updateDocument, 
+    deleteDocument: deleteDoc, 
+    duplicateDocument 
+  } = useDocuments();
 
-  const [docs, setDocs] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [shareDoc, setShareDoc] = useState(null);
-  const [deleteDoc, setDeleteDoc] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchDocs = useCallback(async () => {
-    try {
-      const res = await apiClient.get('/api/documents');
-      setDocs(res.data.documents);
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { fetchDocs(); }, [fetchDocs]);
+  // Fetch documents on mount
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
 
   const handleCreate = async () => {
     setCreating(true);
-    try {
-      const res = await apiClient.post('/api/documents', { title: 'Untitled' });
-      navigate(`/doc/${res.data.document._id}`);
-    } finally { setCreating(false); }
+    const result = await createDocument({ title: 'Untitled' });
+    setCreating(false);
+    
+    if (result.success) {
+      navigate(`/doc/${result.document._id}`);
+    }
   };
 
   const handleRename = async (id, title) => {
-    await apiClient.patch(`/api/documents/${id}`, { title });
-    setDocs((prev) => prev.map((d) => d._id === id ? { ...d, title } : d));
+    await updateDocument(id, { title });
   };
 
   const handleDuplicate = async (id) => {
-    const res = await apiClient.post(`/api/documents/${id}/duplicate`);
-    setDocs((prev) => [res.data.document, ...prev]);
+    await duplicateDocument(id);
   };
 
   const handleDelete = async () => {
-    if (!deleteDoc) return;
+    if (!deleteTarget) return;
     setDeleting(true);
-    try {
-      await apiClient.delete(`/api/documents/${deleteDoc._id}`);
-      setDocs((prev) => prev.filter((d) => d._id !== deleteDoc._id));
-      setDeleteDoc(null);
-    } finally { setDeleting(false); }
+    await deleteDoc(deleteTarget._id);
+    setDeleting(false);
+    setDeleteTarget(null);
   };
 
-  const filtered = docs.filter((d) => d.title.toLowerCase().includes(search.toLowerCase()));
+  const handleLogout = () => {
+    logout();
+  };
+
+  // Filter documents
+  const filtered = documents.filter((d) => 
+    d.title.toLowerCase().includes(search.toLowerCase())
+  );
   const myDocs = filtered.filter((d) => d.ownerId === user?._id);
   const sharedDocs = filtered.filter((d) => d.ownerId !== user?._id);
 
@@ -70,7 +82,7 @@ export default function DashboardPage() {
           <span className="text-lg font-bold text-brand-600">SyncDoc</span>
           <div className="flex items-center gap-3">
             {user && <Avatar name={user.name} color={user.avatarColor} size="sm" />}
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/login'); }}>Log out</Button>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>Log out</Button>
           </div>
         </div>
       </header>
@@ -78,11 +90,15 @@ export default function DashboardPage() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         {/* Search + New */}
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <input type="search" placeholder="Search documents…" value={search}
+          <input 
+            type="search" 
+            placeholder="Search documents…" 
+            value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm shadow-sm
               focus:outline-none focus:ring-2 focus:ring-brand-500 sm:max-w-xs"
-            aria-label="Search documents" />
+            aria-label="Search documents" 
+          />
           <Button onClick={handleCreate} loading={creating}>
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -105,14 +121,22 @@ export default function DashboardPage() {
               {myDocs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 py-16 text-center">
                   <p className="mb-3 text-gray-400">No documents yet</p>
-                  <Button onClick={handleCreate} loading={creating} size="sm">Create your first document</Button>
+                  <Button onClick={handleCreate} loading={creating} size="sm">
+                    Create your first document
+                  </Button>
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {myDocs.map((d) => (
-                    <DocumentCard key={d._id} doc={d} currentUserId={user?._id}
-                      onRename={handleRename} onDelete={setDeleteDoc}
-                      onDuplicate={handleDuplicate} onShare={setShareDoc} />
+                    <DocumentCard 
+                      key={d._id} 
+                      doc={d} 
+                      currentUserId={user?._id}
+                      onRename={handleRename} 
+                      onDelete={setDeleteTarget}
+                      onDuplicate={handleDuplicate} 
+                      onShare={setShareDoc} 
+                    />
                   ))}
                 </div>
               )}
@@ -126,9 +150,15 @@ export default function DashboardPage() {
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {sharedDocs.map((d) => (
-                    <DocumentCard key={d._id} doc={d} currentUserId={user?._id}
-                      onRename={handleRename} onDelete={setDeleteDoc}
-                      onDuplicate={handleDuplicate} onShare={setShareDoc} />
+                    <DocumentCard 
+                      key={d._id} 
+                      doc={d} 
+                      currentUserId={user?._id}
+                      onRename={handleRename} 
+                      onDelete={setDeleteTarget}
+                      onDuplicate={handleDuplicate} 
+                      onShare={setShareDoc} 
+                    />
                   ))}
                 </div>
               </section>
@@ -138,13 +168,22 @@ export default function DashboardPage() {
       </main>
 
       {shareDoc && (
-        <ShareModal open={!!shareDoc} onClose={() => setShareDoc(null)}
-          documentId={shareDoc._id} documentTitle={shareDoc.title}
+        <ShareModal 
+          open={!!shareDoc} 
+          onClose={() => setShareDoc(null)}
+          documentId={shareDoc._id} 
+          documentTitle={shareDoc.title}
           collaborators={shareDoc.collaborators || []}
-          onUpdated={() => { fetchDocs(); setShareDoc(null); }} />
+          onUpdated={() => { fetchDocuments(); setShareDoc(null); }} 
+        />
       )}
-      <ConfirmDeleteModal open={!!deleteDoc} onClose={() => setDeleteDoc(null)}
-        onConfirm={handleDelete} title={deleteDoc?.title || ''} loading={deleting} />
+      <ConfirmDeleteModal 
+        open={!!deleteTarget} 
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete} 
+        title={deleteTarget?.title || ''} 
+        loading={deleting} 
+      />
     </div>
   );
 }

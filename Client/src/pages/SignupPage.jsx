@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import apiClient from '../lib/apiClient';
-import { useAuthStore } from '../store/authStore';
+import { useAuth } from '../hooks';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
+/**
+ * SignupPage Component
+ * 
+ * UI Layer: Handles user signup interface
+ * Uses: useAuth hook (Hooks Layer)
+ */
 export default function SignupPage() {
   const navigate = useNavigate();
-  const setAuth = useAuthStore((s) => s.setAuth);
+  const { signup, loading, error: authError } = useAuth();
+  
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
 
   const validate = () => {
     const e = {};
@@ -22,18 +27,23 @@ export default function SignupPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const errs = validate();
-    if (Object.keys(errs).length) { setErrors(errs); return; }
+    
+    // Client-side validation
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length) {
+      setErrors(validationErrors);
+      return;
+    }
+    
     setErrors({});
-    setLoading(true);
-    try {
-      const res = await apiClient.post('/api/auth/signup', form);
-      setAuth(res.data.user, res.data.token);
+    
+    // Call signup through hook
+    const result = await signup(form);
+    
+    if (result.success) {
       navigate('/dashboard', { replace: true });
-    } catch (err) {
-      setErrors({ form: err.response?.data?.message || 'Sign up failed. Please try again.' });
-    } finally {
-      setLoading(false);
+    } else {
+      setErrors({ form: result.error });
     }
   };
 
@@ -46,17 +56,42 @@ export default function SignupPage() {
         </div>
         <div className="rounded-2xl bg-white p-8 shadow-sm border border-gray-100">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
-            <Input label="Full name" type="text" autoComplete="name"
-              value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              error={errors.name} required />
-            <Input label="Email address" type="email" autoComplete="email"
-              value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-              error={errors.email} required />
-            <Input label="Password" type="password" autoComplete="new-password"
-              value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              error={errors.password} hint="At least 6 characters" required />
-            {errors.form && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{errors.form}</p>}
-            <Button type="submit" loading={loading} className="w-full mt-1">Create account</Button>
+            <Input 
+              label="Full name" 
+              type="text" 
+              autoComplete="name"
+              value={form.name} 
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              error={errors.name} 
+              required 
+            />
+            <Input 
+              label="Email address" 
+              type="email" 
+              autoComplete="email"
+              value={form.email} 
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              error={errors.email} 
+              required 
+            />
+            <Input 
+              label="Password" 
+              type="password" 
+              autoComplete="new-password"
+              value={form.password} 
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+              error={errors.password} 
+              hint="At least 6 characters" 
+              required 
+            />
+            {(errors.form || authError) && (
+              <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                {errors.form || authError}
+              </p>
+            )}
+            <Button type="submit" loading={loading} className="w-full mt-1">
+              Create account
+            </Button>
           </form>
         </div>
         <p className="mt-6 text-center text-sm text-gray-500">
