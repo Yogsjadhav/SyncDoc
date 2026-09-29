@@ -16,6 +16,12 @@ const app = express();
 
 // Security: Helmet adds security headers to protect against common vulnerabilities
 app.use(helmet());
+app.get('/', (_req, res) => {
+  res.json({
+    message: 'SyncDoc Server is running',
+    status: 'success'
+  });
+});
 
 // CORS: Allow frontend to make requests from a different domain (cross-origin requests)
 app.use(cors({ 

@@ -34,7 +34,7 @@ async function startServer() {
   try {
     // Step 1: Connect to MongoDB database
     await mongoose.connect(MONGO_URI);
-    console.log('✓ MongoDB connected');
+    console.log(' MongoDB connected');
     
     // Step 2: Create HTTP server using our Express app
     const server = http.createServer(app);
@@ -44,7 +44,7 @@ async function startServer() {
     
     // Step 4: Start listening for incoming requests
     server.listen(PORT, () => {
-      console.log(`✓ Server running on http://localhost:${PORT}`);
+      console.log(`  Server running on http://localhost:${PORT}`);
       console.log(`  Health check available at: http://localhost:${PORT}/health`);
     });
   } catch (error) {
